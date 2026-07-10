@@ -421,6 +421,23 @@
       message: document.getElementById('message').value
     };
 
+    // Email notification to Anjalee (best-effort, does not block the Supabase save)
+    fetch('https://formsubmit.co/ajax/anjalee.rhodes@icloud.com', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        _subject: "New Booking Request - Anjalee's Stove Haven",
+        Name: payload.name,
+        Phone: payload.phone,
+        Email: payload.email,
+        Service: payload.service,
+        Message: payload.message
+      })
+    }).catch(function(){});
+
     try{
       const res = await fetch(SUPABASE_URL + '/rest/v1/contact_submissions', {
         method: 'POST',
