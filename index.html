@@ -257,6 +257,34 @@
   }
   .form-msg.success{color:var(--green);}
   .form-msg.error{color:#8a2c2c;}
+  .optional-tag{font-weight:400;font-style:italic;color:#6b6b5a;font-size:14px;}
+  .field-note{
+    font-size:14px;
+    color:#5a6b56;
+    font-style:italic;
+    margin-top:6px;
+    line-height:1.4;
+  }
+  input[type="file"]{
+    padding:8px;
+    background:#fff;
+    border:1px solid #cbbfa0;
+    font-family:'Cormorant Garamond', serif;
+    font-size:15px;
+  }
+  .photo-preview{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:10px;
+  }
+  .photo-preview img{
+    width:64px;
+    height:64px;
+    object-fit:cover;
+    border:1px solid var(--cream-dark);
+    border-radius:2px;
+  }
 
   footer{
     text-align:center;
@@ -382,8 +410,17 @@
         <option value="Mail Organizing">Mail Organizing &mdash; $30</option>
       </select>
 
+      <label for="address">Address <span class="optional-tag">(optional)</span></label>
+      <input type="text" id="address" name="address" placeholder="Street address, city">
+      <p class="field-note">Sharing your address is optional &mdash; it simply helps Anjalee plan travel time and distance when scheduling your visit.</p>
+
       <label for="message">Message</label>
       <textarea id="message" name="message" placeholder="Tell us about your space or preferred date/time"></textarea>
+
+      <label for="photos">Photos <span class="optional-tag">(optional, up to 5)</span></label>
+      <input type="file" id="photos" name="photos" accept="image/*" multiple>
+      <p class="field-note">Attaching a few photos of the space is optional, but it helps Anjalee prepare ahead of your visit.</p>
+      <div class="photo-preview" id="photo-preview"></div>
 
       <button type="submit" class="submit-btn" id="submit-btn">Send Request</button>
       <div class="form-msg" id="form-msg"></div>
@@ -405,6 +442,44 @@
   const form = document.getElementById('booking-form');
   const submitBtn = document.getElementById('submit-btn');
   const msgBox = document.getElementById('form-msg');
+  const photosInput = document.getElementById('photos');
+  const photoPreview = document.getElementById('photo-preview');
+
+  photosInput.addEventListener('change', function(){
+    if(photosInput.files.length > 5){
+      alert('Please choose up to 5 photos only.');
+      photosInput.value = '';
+      photoPreview.innerHTML = '';
+      return;
+    }
+    photoPreview.innerHTML = '';
+    Array.from(photosInput.files).forEach(function(file){
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(file);
+      photoPreview.appendChild(img);
+    });
+  });
+
+  async function uploadPhotos(files){
+    const urls = [];
+    for(const file of files){
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = Date.now() + '-' + Math.random().toString(36).slice(2) + '.' + ext;
+      const res = await fetch(SUPABASE_URL + '/storage/v1/object/booking-photos/' + path, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_KEY,
+          'Content-Type': file.type || 'application/octet-stream'
+        },
+        body: file
+      });
+      if(res.ok){
+        urls.push(SUPABASE_URL + '/storage/v1/object/public/booking-photos/' + path);
+      }
+    }
+    return urls;
+  }
 
   form.addEventListener('submit', async function(e){
     e.preventDefault();
@@ -413,12 +488,26 @@
     msgBox.textContent = '';
     msgBox.className = 'form-msg';
 
+    let photoUrls = [];
+    const files = Array.from(photosInput.files || []);
+    if(files.length > 0){
+      submitBtn.textContent = 'Uploading photos...';
+      try{
+        photoUrls = await uploadPhotos(files);
+      } catch(err){
+        photoUrls = [];
+      }
+      submitBtn.textContent = 'Sending...';
+    }
+
     const payload = {
       name: document.getElementById('name').value,
       phone: document.getElementById('phone').value,
       email: document.getElementById('email').value,
       service: document.getElementById('service').value,
-      message: document.getElementById('message').value
+      address: document.getElementById('address').value,
+      message: document.getElementById('message').value,
+      photo_urls: photoUrls.length ? photoUrls : null
     };
 
     // Email notification to Anjalee (best-effort, does not block the Supabase save)
@@ -434,7 +523,9 @@
         Phone: payload.phone,
         Email: payload.email,
         Service: payload.service,
-        Message: payload.message
+        Address: payload.address || '(not provided)',
+        Message: payload.message,
+        Photos: photoUrls.length ? photoUrls.join('\n') : '(none attached)'
       })
     }).catch(function(){});
 
@@ -454,6 +545,7 @@
         msgBox.textContent = 'Thank you! Your request has been received. We will be in touch soon.';
         msgBox.className = 'form-msg success';
         form.reset();
+        photoPreview.innerHTML = '';
       } else {
         throw new Error('Request failed');
       }
